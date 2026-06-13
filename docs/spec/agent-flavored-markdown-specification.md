@@ -232,8 +232,8 @@ When solving problems, show all work and explain each step. Use the available ma
 ## 7. Applying AFM to Doxa
 
 AFM is a natural fit for Doxa because the platform already exposes governed capabilities over MCP
-(see [mintmcp-gateway-recreation-prompt.md](mintmcp-gateway-recreation-prompt.md) and
-[profisee-mcp-mdm-recreation-prompt.md](profisee-mcp-mdm-recreation-prompt.md)). An AFM file lets us
+(see [../examples/mintmcp-gateway-recreation-prompt.md](../examples/mintmcp-gateway-recreation-prompt.md) and
+[../examples/profisee-mcp-mdm-recreation-prompt.md](../examples/profisee-mcp-mdm-recreation-prompt.md)). An AFM file lets us
 declare an agent once and point it at the Doxa MCP gateway, with all secrets injected via `${env:...}`
 substitution rather than hardcoded — consistent with the Aspire-parameter / Keycloak-token posture
 described in [doxa-enterprise-architecture-compliance-spec.md](doxa-enterprise-architecture-compliance-spec.md).
