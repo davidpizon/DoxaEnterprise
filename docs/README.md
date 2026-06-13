@@ -13,6 +13,7 @@ These describe how Doxa itself is built, secured, deployed, and kept compliant (
 | [doxa-enterprise-architecture-compliance-spec.md](doxa-enterprise-architecture-compliance-spec.md) | System architecture & compliance spec on Azure: HA/DR, zero-trust security, SOC 2 / HIPAA control mappings, immutable NIST audit pipeline (with Mermaid diagram). |
 | [azure-deployment-security-implementation-plan.md](azure-deployment-security-implementation-plan.md) | Implementation plan: Bicep for container-level WORM immutable audit storage, plus Microsoft Purview DLP rules for multi-tenant PHI/PII protection. |
 | [multi-tenant-cicd-data-isolation-architecture-plan.md](multi-tenant-cicd-data-isolation-architecture-plan.md) | GitHub Actions OIDC CI/CD (lint → validate → what-if → staged deploy) and the database-per-tenant Elastic Pool sharding model with database-level TDE CMK. |
+| [enterprise-governance-security-operations-plan.md](enterprise-governance-security-operations-plan.md) | Security operations runbooks: certified tenant offboarding & cryptographic shredding (SQL/PowerShell), plus a Bicep pipeline streaming telemetry to Microsoft Sentinel with a cross-tenant-anomaly KQL hunting rule. |
 
 ## AI Agent & Data Patterns
 
