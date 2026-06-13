@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="MessagePack" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Aspire.Hosting.Testing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Generates the Projects.Doxa_AppHost metadata used by the testing builder. -->
+    <ProjectReference Include="..\..\Doxa.AppHost\Doxa.AppHost.csproj" />
+  </ItemGroup>
+
+</Project>

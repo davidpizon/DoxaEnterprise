@@ -1,0 +1,26 @@
+<Project>
+
+  <!--
+    Shared settings for every test project under src/tests/.
+    Central package versions are inherited from ../Directory.Packages.props.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+
+    <!-- Test projects are not shipped as packages. -->
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+
+    <!-- xUnit v3 test projects run as standalone executables. -->
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <!-- Global using for the xUnit attributes/assertions across all test files. -->
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

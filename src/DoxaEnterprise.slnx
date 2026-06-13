@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/tests/">
+    <Project Path="tests/Doxa.ApiService.Tests/Doxa.ApiService.Tests.csproj" />
+    <Project Path="tests/Doxa.AppHost.Tests/Doxa.AppHost.Tests.csproj" />
+    <Project Path="tests/Doxa.ServiceDefaults.Tests/Doxa.ServiceDefaults.Tests.csproj" />
+  </Folder>
+  <Project Path="Doxa.ApiService/Doxa.ApiService.csproj" />
+  <Project Path="Doxa.AppHost/Doxa.AppHost.csproj" />
+  <Project Path="Doxa.ServiceDefaults/Doxa.ServiceDefaults.csproj" />
+  <Project Path="Doxa.Web/Doxa.Web.csproj" />
+</Solution>

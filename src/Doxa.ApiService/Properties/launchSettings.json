@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "Doxa.ApiService": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "https://localhost:60703;http://localhost:60705"
+    }
+  }
+}

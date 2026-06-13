@@ -1,0 +1,70 @@
+{
+  "realm": "doxa",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "roles": {
+    "realm": [
+      { "name": "doxa-admin", "description": "Full administrative access to Doxa." },
+      { "name": "doxa-user", "description": "Standard authenticated Doxa user." }
+    ]
+  },
+  "clientScopes": [
+    {
+      "name": "doxa-api",
+      "protocol": "openid-connect",
+      "description": "Access to the Doxa backend API.",
+      "attributes": { "include.in.token.scope": "true", "display.on.consent.screen": "false" },
+      "protocolMappers": [
+        {
+          "name": "doxa-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "doxa-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "doxa-web",
+      "name": "Doxa Frontend Web App",
+      "protocol": "openid-connect",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "${DOXA_WEB_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "https://localhost:*/signin-oidc",
+        "*/signin-oidc"
+      ],
+      "postLogoutRedirectUris": [
+        "https://localhost:*/signout-callback-oidc",
+        "*/signout-callback-oidc",
+        "+"
+      ],
+      "webOrigins": [ "+" ],
+      "frontchannelLogout": false,
+      "attributes": {
+        "backchannel.logout.session.required": "true",
+        "backchannel.logout.revoke.offline.tokens": "true",
+        "backchannel.logout.url": "https://localhost:7100/signout-oidc",
+        "post.logout.redirect.uris": "+"
+      },
+      "defaultClientScopes": [ "openid", "profile", "email", "doxa-api" ],
+      "optionalClientScopes": [ "offline_access" ]
+    },
+    {
+      "clientId": "doxa-api",
+      "name": "Doxa Backend API",
+      "protocol": "openid-connect",
+      "enabled": true,
+      "bearerOnly": true
+    }
+  ]
+}
