@@ -1,7 +1,8 @@
-# Doxa
+# Doxa Enterprise
 
 Cloud-scale enterprise platform built on **.NET Aspire 13.4** with **Keycloak** OIDC single sign-on,
-PostgreSQL, Redis distributed cache, OpenTelemetry, and HTTP resilience.
+PostgreSQL, Redis distributed cache, OpenTelemetry, and HTTP resilience. Projects use the `Doxa.*`
+namespace prefix; the solution file is `DoxaEnterprise.slnx`.
 
 ## Projects
 
@@ -50,6 +51,18 @@ The Aspire dashboard launches and shows every resource, its logs, traces, and me
   bind to Key Vault.
 - **Kubernetes (Aspirate):** `aspire publish` produces `aspire-manifest.json`; `aspirate generate`
   emits K8s manifests with secret parameters as K8s Secrets.
+
+## Multi-tenancy & deployment assumptions
+
+- **Now (development):** a single shared PostgreSQL database. Tenant isolation is enforced at the
+  **row level** — a `TenantId` column plus PostgreSQL Row-Level Security (RLS).
+- **Target (production):** **database-per-tenant** on Azure Database for PostgreSQL Flexible Server.
+  Assume **multiple stateless pods running in parallel, each bound to a distinct per-tenant database**.
+  So: keep services stateless, never hold a tenant's data/connection/`TenantId` in process-global or
+  static state, resolve the per-tenant connection per request, and run migrations per-tenant-database.
+  Code written against the single dev database must stay correct when fanned out across many
+  per-tenant pods. See
+  [docs/plan/multi-tenant-cicd-data-isolation-architecture-plan.md](../docs/plan/multi-tenant-cicd-data-isolation-architecture-plan.md).
 
 ## Notes
 

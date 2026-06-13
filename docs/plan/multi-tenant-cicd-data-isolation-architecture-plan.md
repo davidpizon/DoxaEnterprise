@@ -161,12 +161,31 @@ The workflow above applies the following industry-standard, audit-aligned contro
 
 ---
 
-## 2. Multi-Tenant Database Sharding Strategy (Azure SQL Pool Pattern)
+## 2. Multi-Tenant Database Sharding Strategy (Azure Database for PostgreSQL Pattern)
 
-To achieve strict HIPAA isolation and SOC 2 data containment, Doxa Enterprise drops standard
-shared-table indexing in favor of an Elastic Database Pool Sharding architecture
-(Database-per-Tenant pattern). This strategy eliminates noisy-neighbor performance problems and
-guarantees precise security limits.
+To achieve strict HIPAA isolation and SOC 2 data containment, Doxa Enterprise's **production target**
+drops standard shared-table indexing in favor of a **database-per-tenant** pattern hosted on a shared
+**Azure Database for PostgreSQL Flexible Server**. This strategy eliminates noisy-neighbor performance
+problems and guarantees precise security limits.
+
+> **Isolation model — current vs. target.**
+>
+> - **Now (development):** a single shared **containerized PostgreSQL** database (provisioned by .NET
+>   Aspire). Tenant isolation is enforced at the **row level** — a `TenantId` column on every
+>   tenant-scoped table plus PostgreSQL **Row-Level Security (RLS)**. This is exactly what the
+>   `doxa-enforce-tenant-isolation-clause` SAST rule guards (see
+>   [enterprise-resilience-application-security-blueprint.md](enterprise-resilience-application-security-blueprint.md)).
+> - **Target (production):** **database-per-tenant** on Azure Database for PostgreSQL Flexible Server,
+>   with per-tenant connection routing via the `TenantRoutingCatalog` below. Adopted once the
+>   application exits its development cycle.
+>
+> **Production parallelism assumption (design constraint).** Development decisions **must** assume that
+> in production **multiple stateless application pods run in parallel, each resolving its own per-tenant
+> database connection** (distinct databases for different tenants). Concretely: keep pods stateless;
+> never hold one tenant's data, connection, or `TenantId` in process-global or static state; resolve
+> the tenant's connection string per request from the routing catalog; and run schema migrations
+> per-tenant-database. Code written against the single development database must stay correct when the
+> same container image is fanned out across many pods, each bound to a different tenant database.
 
 ### 2.1 Logical-to-Physical Data Separation Model
 
@@ -184,21 +203,22 @@ guarantees precise security limits.
         ▲              ▲              ▲
         └──────────────┼──────────────┘
                        ▼
-  [Azure SQL Multi-Tenant Elastic Database Pool]
-  (Dynamic shared allocation of computing capacity / eDTUs)
+  [Shared Azure Database for PostgreSQL Flexible Server]
+  (Per-tenant databases; shared vCore compute allocation)
 ```
 
 ### 2.2 Core Operational Architecture Specs
 
-- **Shard Resource Provisioning:** Databases live within a centralized Azure SQL Elastic Pool.
-  Individual subscriber databases scale their compute metrics automatically up to assigned limits
-  during high usage periods without impacting adjacent tenant data nodes.
-- **Cryptographic Key Isolation (database-level TDE CMK) [^6]:** Each tenant database is encrypted
-  with Transparent Data Encryption using a **customer-managed key (the TDE protector) set at the
-  *database* level** — not the shared logical-server level — stored in the subscriber's own Azure Key
-  Vault or Managed HSM and accessed through a **user-assigned managed identity** (granted `Get`,
-  `wrapKey`, and `unwrapKey`). This delivers true per-tenant *key and identity* isolation inside a
-  shared elastic pool. Revoking or deleting a departing subscriber's key cryptographically renders
+- **Shard Resource Provisioning:** Tenant databases live on a centralized Azure Database for
+  PostgreSQL Flexible Server. Compute (vCores / memory) is shared across the per-tenant databases and
+  scales with the server tier during high-usage periods without impacting adjacent tenant data nodes.
+- **Cryptographic Key Isolation (customer-managed key encryption) [^6]:** Data at rest is encrypted
+  with a **customer-managed key (CMK)** stored in the subscriber's own Azure Key Vault or Managed HSM
+  and accessed through a **user-assigned managed identity** (granted `Get`, `wrapKey`, and `unwrapKey`).
+  Azure Database for PostgreSQL Flexible Server applies the CMK at the **server** level, so true
+  per-tenant *key and identity* isolation is realized by hosting each subscriber's database on its own
+  CMK-encrypted server (or per-tier server group); the exact isolation granularity is set by the
+  data-isolation model. Revoking or deleting a departing subscriber's key cryptographically renders
   their underlying data unreadable, and new key versions are auto-rotated within 24 hours.
 - **Cross-Tenant Leakage Prevention:** Data queries must flow through an Application Tier routing
   layer that verifies identity matching against Microsoft Entra claims context tokens before opening
@@ -210,74 +230,66 @@ This SQL setup routine executes on the Doxa central routing map coordinator when
 enterprise platform subscriber.
 
 ```sql
--- 1. Create a secure tracking layout table on the Global Catalog Manager Router instance
+-- 1. Create a secure tracking layout table on the Global Catalog Manager Router instance.
+--    gen_random_uuid() is built into PostgreSQL 13+ (or provided by the pgcrypto extension).
 CREATE TABLE TenantRoutingCatalog (
-    TenantId UNIQUEIDENTIFIER NOT NULL PRIMARY KEY DEFAULT NEWID(),
-    TenantName NVARCHAR(256) NOT NULL,
-    AzureSqlDatabaseName NVARCHAR(128) NOT NULL,
+    TenantId UUID NOT NULL PRIMARY KEY DEFAULT gen_random_uuid(),
+    TenantName VARCHAR(256) NOT NULL,
+    PostgresDatabaseName VARCHAR(128) NOT NULL,
     DataIsolationStatus VARCHAR(50) NOT NULL DEFAULT 'ACTIVE'
         CONSTRAINT CK_Tenant_IsolationStatus
         CHECK (DataIsolationStatus IN ('ACTIVE', 'SUSPENDED', 'DEPROVISIONED')),
-    CustomerEncryptionKeyUri NVARCHAR(512) NOT NULL,
-    CreatedAt DATETIMEOFFSET NOT NULL DEFAULT SYSDATETIMEOFFSET()
+    CustomerEncryptionKeyUri VARCHAR(512) NOT NULL,
+    CreatedAt TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- 2. Enforce a strict one-to-one tenant-to-database mapping so a tenant name or a physical
 --    database can never be registered twice (a data-integrity guard, not a visibility control).
 CREATE UNIQUE INDEX UX_Tenant_Name ON TenantRoutingCatalog (TenantName);
-CREATE UNIQUE INDEX UX_Tenant_Database ON TenantRoutingCatalog (AzureSqlDatabaseName);
+CREATE UNIQUE INDEX UX_Tenant_Database ON TenantRoutingCatalog (PostgresDatabaseName);
 
--- 3. Stored procedure used by the automated onboarding worker to safely provision shards
-GO
-CREATE PROCEDURE sp_ProvisionSecureTenantShard
-    @TenantName NVARCHAR(256),
-    @TargetDatabaseName NVARCHAR(128),
-    @KeyVaultUri NVARCHAR(512),
-    @NewTenantId UNIQUEIDENTIFIER OUTPUT
-AS
+-- 3. Function used by the automated onboarding worker to safely provision shards.
+--    A plpgsql function runs inside the caller's transaction, so any raised error aborts
+--    and rolls back the insert automatically (no explicit BEGIN/COMMIT/ROLLBACK needed).
+CREATE OR REPLACE FUNCTION sp_ProvisionSecureTenantShard(
+    p_TenantName          VARCHAR(256),
+    p_TargetDatabaseName  VARCHAR(128),
+    p_KeyVaultUri         VARCHAR(512)
+)
+RETURNS UUID
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_NewTenantId UUID := gen_random_uuid();
 BEGIN
-    SET NOCOUNT ON;
-    SET XACT_ABORT ON; -- Any runtime error reliably dooms and rolls back the transaction.
-
     -- Validate inputs before touching the catalog.
-    IF NULLIF(LTRIM(RTRIM(@TenantName)), '') IS NULL
-        OR NULLIF(LTRIM(RTRIM(@TargetDatabaseName)), '') IS NULL
-        OR NULLIF(LTRIM(RTRIM(@KeyVaultUri)), '') IS NULL
-    BEGIN
-        THROW 50001, 'TenantName, TargetDatabaseName, and KeyVaultUri are all required.', 1;
-    END;
+    IF NULLIF(BTRIM(p_TenantName), '') IS NULL
+        OR NULLIF(BTRIM(p_TargetDatabaseName), '') IS NULL
+        OR NULLIF(BTRIM(p_KeyVaultUri), '') IS NULL THEN
+        RAISE EXCEPTION 'TenantName, TargetDatabaseName, and KeyVaultUri are all required.'
+            USING ERRCODE = 'check_violation';
+    END IF;
 
-    SET @NewTenantId = NEWID();
+    -- Insert the tracking identifier safely into the isolation lookup catalog.
+    INSERT INTO TenantRoutingCatalog (TenantId, TenantName, PostgresDatabaseName, CustomerEncryptionKeyUri)
+    VALUES (v_NewTenantId, p_TenantName, p_TargetDatabaseName, p_KeyVaultUri);
 
-    BEGIN TRY
-        BEGIN TRANSACTION;
+    -- Note: the application wrapper layer provisions the separate physical PostgreSQL database on the
+    -- shared Azure Database for PostgreSQL Flexible Server via the Azure Resource Manager API
+    -- immediately after this step, then assigns the customer-managed key and user-assigned identity.
 
-        -- Insert the tracking identifier safely into the isolation lookup catalog.
-        INSERT INTO TenantRoutingCatalog (TenantId, TenantName, AzureSqlDatabaseName, CustomerEncryptionKeyUri)
-        VALUES (@NewTenantId, @TenantName, @TargetDatabaseName, @KeyVaultUri);
-
-        -- Note: the application wrapper layer provisions the separate physical Azure SQL database
-        -- inside the Elastic Pool via the Azure Resource Manager API immediately after this step,
-        -- then assigns the database-level TDE customer-managed key and user-assigned identity.
-
-        COMMIT TRANSACTION;
-    END TRY
-    BEGIN CATCH
-        IF @@TRANCOUNT > 0
-            ROLLBACK TRANSACTION;
-        THROW; -- Re-raise the original error to the onboarding worker for handling/retry.
-    END CATCH;
+    RETURN v_NewTenantId;
 END;
-GO
+$$;
 ```
 
 ---
 
 ## References
 
-[^1]: <https://betterprogramming.pub>
-[^2]: <https://joshua-lucas.com>
+[^1]: [Deploy Bicep files by using GitHub Actions](https://learn.microsoft.com/azure/azure-resource-manager/bicep/deploy-github-actions) — Microsoft Learn guide to the GitHub Actions → Azure infrastructure deployment workflow.
+[^2]: [Using environments for deployment](https://docs.github.com/actions/deployment/targeting-different-environments/using-environments-for-deployment) — GitHub Docs on staged environments and deployment protection rules (required reviewers, branch restrictions).
 [^3]: [Embed Zero Trust security into your developer workflow — GitHub OIDC & Workload Identity Federation](https://learn.microsoft.com/security/zero-trust/develop/embed-zero-trust-dev-workflow) and [Deploy to Azure infrastructure with GitHub Actions](https://learn.microsoft.com/devops/deliver/iac-github-actions)
 [^4]: [Use the Bicep linter](https://learn.microsoft.com/azure/azure-resource-manager/bicep/linter) and [Add linter settings in the Bicep config file](https://learn.microsoft.com/azure/azure-resource-manager/bicep/bicep-config-linter)
 [^5]: [Bicep what-if: preview changes before deployment](https://learn.microsoft.com/azure/azure-resource-manager/bicep/deploy-what-if)
-[^6]: [Transparent data encryption (TDE) with customer-managed keys at the database level](https://learn.microsoft.com/azure/azure-sql/database/transparent-data-encryption-byok-database-level-overview)
+[^6]: [Data encryption with customer-managed keys — Azure Database for PostgreSQL Flexible Server](https://learn.microsoft.com/azure/postgresql/flexible-server/concepts-data-encryption)
