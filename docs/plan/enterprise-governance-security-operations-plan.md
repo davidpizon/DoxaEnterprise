@@ -18,8 +18,8 @@ policies.[^1][^4]
 the central catalog mapping engine.[^5]
 
 ```sql
-UPDATE TenantRoutingCatalog 
-SET DataIsolationStatus = 'DEACTIVATED' 
+UPDATE TenantRoutingCatalog
+SET DataIsolationStatus = 'DEPROVISIONED'
 WHERE TenantId = '4f8e91a2-63b7-4c12-89d4-e5f6a7b8c9d0';
 ```
 
@@ -53,11 +53,11 @@ Remove-AzKeyVaultKey -VaultName "kv-doxa-tenant-keys" -Name "key-tenant-4f8e91a2
 
 ### Phase 3: Physical Compute and Database Elimination
 
-**1. Drop Physical Azure SQL Shard.** Completely detach and delete the tenant's isolated data node
-from the shared production Elastic Pool.[^5]
+**1. Drop the Physical PostgreSQL Database.** Completely delete the tenant's isolated database from
+the shared production Azure Database for PostgreSQL Flexible Server.[^5]
 
 ```powershell
-Remove-AzSqlDatabase -ResourceGroupName "rg-doxa-prod" -ServerName "sql-doxa-pool" -DatabaseName "db_tenant_4f8e91a2"
+Remove-AzPostgreSqlFlexibleServerDatabase -ResourceGroupName "rg-doxa-prod" -ServerName "psql-doxa-pool" -Name "db_tenant_4f8e91a2"
 ```
 
 **2. Wipe Sandbox Working Directories.** Issue automated lifecycles to clear isolated caching and

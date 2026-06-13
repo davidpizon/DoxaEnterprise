@@ -63,6 +63,12 @@ HIPAA/HITRUST Regulatory Initiative:[^5]
 
 - **Authentication & Authorization:** Microsoft Entra ID dictates fine-grained Role-Based Access
   Control (RBAC).[^6] Cross-tenant communication is explicitly blocked.
+- **Tenant Data Isolation:** In production each subscriber's data resides in its **own PostgreSQL
+  database** (database-per-tenant); stateless application pods resolve a per-tenant connection at
+  runtime, and multiple pods run in parallel against distinct tenant databases. During the development
+  cycle a **single shared PostgreSQL database** is used, with isolation enforced at the **row level**
+  (`TenantId` column + Row-Level Security). See
+  [../plan/multi-tenant-cicd-data-isolation-architecture-plan.md](../plan/multi-tenant-cicd-data-isolation-architecture-plan.md).
 - **Network Segmentation:** Deployed inside an Azure Virtual Network (VNet) topology.[^7] Core compute
   tasks run on private subnets isolated by Network Security Groups (NSGs),[^8] admitting public
   network inputs exclusively from authenticated Azure WAF endpoints.
@@ -78,15 +84,23 @@ HIPAA/HITRUST Regulatory Initiative:[^5]
 
 ### 4.2 Infrastructure Topography
 
-- **Multi-Region Deployment:** Active-Active distribution spanning pairs of primary Azure Regions
-  (e.g., `East US 2` and `Central US`), utilizing Azure Front Door for global traffic routing and
-  instant failover orchestration.
+- **Multi-Region Deployment:** Active-passive **priority failover** across paired primary Azure
+  Regions — `East US 2` (priority 1, primary) and `Central US` (priority 2, failover target) —
+  utilizing Azure Front Door for global traffic routing and instant health-probe-driven failover.
+  (See the Front Door topology in
+  [../plan/enterprise-resilience-application-security-blueprint.md](../plan/enterprise-resilience-application-security-blueprint.md).)
 - **Compute Tier:** Microservices run in an Azure Kubernetes Service (AKS) cluster distributed across
   multiple regional Availability Zones. Auto-scaling groups adjust node capacity when aggregate
   cluster CPU or memory utilization hits 70%.
-- **Database Tier:** Geo-replicated Azure SQL Database Business Critical tier deployments,[^9] taking
-  advantage of underlying Always On availability groups to fulfill the strict sub-minute `RPO`
-  mandate.
+- **Database Tier:** Geo-replicated **Azure Database for PostgreSQL Flexible Server** (Business-critical
+  / Memory-Optimized compute) with **zone-redundant high availability** and cross-region **read
+  replicas**,[^9] using a synchronous standby plus streaming replication to fulfill the strict
+  sub-minute `RPO` mandate.
+
+> **Data tier — current vs. target.** During the development cycle the platform runs **containerized
+> PostgreSQL** (provisioned by .NET Aspire alongside Redis and Keycloak). Once the application exits
+> its development cycle, the data tier migrates to **Azure Database for PostgreSQL Flexible Server**;
+> the managed-service references throughout this document describe that production target.
 
 ---
 
@@ -158,7 +172,7 @@ graph TD
         end
 
         subgraph Azure_Data [High Availability DB Tier]
-            Main_DB[(Azure SQL Database <br> Business Critical Geo-Replica)]:::database
+            Main_DB[(Azure Database for PostgreSQL <br> Flexible Server — Zone-Redundant HA + Read Replica)]:::database
         end
     end
 
@@ -195,5 +209,5 @@ graph TD
 [^6]: [Azure Resource Manager Role-Based Access Control](https://learn.microsoft.com/azure/role-based-access-control/overview) — Framework patterns managing modern enterprise permissions.
 [^7]: [Azure Virtual Network Topography and Hub Architecture](https://learn.microsoft.com/azure/architecture/networking/architecture/hub-spoke) — Structural design rules handling enterprise routing scale limits safely.
 [^8]: [Azure Network Security Group Configurations](https://learn.microsoft.com/azure/virtual-network/network-security-groups-overview) — Reference limits regarding granular incoming/outgoing security policies.
-[^9]: [Azure SQL Database Resiliency and Modernization](https://learn.microsoft.com/azure/azure-sql/database/high-availability-sla-local-zone-redundancy) — Implementation paths for high-performing, stateful cloud databases.
+[^9]: [High availability in Azure Database for PostgreSQL — Flexible Server](https://learn.microsoft.com/azure/postgresql/flexible-server/concepts-high-availability) — Zone-redundant HA, standby failover, and read-replica patterns for high-performing, stateful cloud databases.
 [^10]: [Azure Immutable Blob Storage (WORM) Time-Based Retention](https://learn.microsoft.com/azure/storage/blobs/immutable-storage-overview) — Guidelines for storing legally binding transaction events in a write-once, read-many state.

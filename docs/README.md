@@ -12,8 +12,10 @@ These describe how Doxa itself is built, secured, deployed, and kept compliant (
 | --- | --- |
 | [spec/doxa-enterprise-architecture-compliance-spec.md](spec/doxa-enterprise-architecture-compliance-spec.md) | System architecture & compliance spec on Azure: HA/DR, zero-trust security, SOC 2 / HIPAA control mappings, immutable NIST audit pipeline (with Mermaid diagram). |
 | [plan/azure-deployment-security-implementation-plan.md](plan/azure-deployment-security-implementation-plan.md) | Implementation plan: Bicep for container-level WORM immutable audit storage, plus Microsoft Purview DLP rules for multi-tenant PHI/PII protection. |
-| [plan/multi-tenant-cicd-data-isolation-architecture-plan.md](plan/multi-tenant-cicd-data-isolation-architecture-plan.md) | GitHub Actions OIDC CI/CD (lint → validate → what-if → staged deploy) and the database-per-tenant Elastic Pool sharding model with database-level TDE CMK. |
+| [plan/multi-tenant-cicd-data-isolation-architecture-plan.md](plan/multi-tenant-cicd-data-isolation-architecture-plan.md) | GitHub Actions OIDC CI/CD (lint → validate → what-if → staged deploy) and the database-per-tenant model on Azure Database for PostgreSQL Flexible Server with customer-managed-key (CMK) encryption. |
 | [plan/enterprise-governance-security-operations-plan.md](plan/enterprise-governance-security-operations-plan.md) | Security operations runbooks: certified tenant offboarding & cryptographic shredding (SQL/PowerShell), plus a Bicep pipeline streaming telemetry to Microsoft Sentinel with a cross-tenant-anomaly KQL hunting rule. |
+| [plan/automated-incident-response-playbook.md](plan/automated-incident-response-playbook.md) | Sentinel-triggered Azure Logic Apps (Standard) SOAR playbook: Bicep for the workflow host, the `workflow.json` orchestration (IP block + Entra ID session revocation + SOC notification), and the isolation sequence map. |
+| [plan/enterprise-resilience-application-security-blueprint.md](plan/enterprise-resilience-application-security-blueprint.md) | Resilience + AppSec blueprint: Azure Front Door (Premium) multi-region failover Bicep with priority origins/health probes, plus a Semgrep SAST + SCA GitHub Actions pipeline and a custom tenant-isolation rule. |
 
 ## AI Agent & Data Patterns
 
@@ -35,3 +37,11 @@ shaping Doxa's own agent-governance and MDM capabilities.
 | [examples/backplanes-spotlight-recreation-prompt.md](examples/backplanes-spotlight-recreation-prompt.md) | Backplanes Spotlight — AI agent session observability & governance. |
 | [examples/mintmcp-gateway-recreation-prompt.md](examples/mintmcp-gateway-recreation-prompt.md) | MintMCP — enterprise MCP gateway & agent-governance platform. |
 | [examples/profisee-mcp-mdm-recreation-prompt.md](examples/profisee-mcp-mdm-recreation-prompt.md) | Profisee — MDM platform with an MCP server exposing golden records to AI. |
+
+## Architecture Decision Records
+
+Durable record of cross-cutting architecture/design decisions.
+
+| Document | What it covers |
+| --- | --- |
+| [adr/0001-documentation-reconciliation.md](adr/0001-documentation-reconciliation.md) | Data tier (PostgreSQL now → Azure PostgreSQL target), phased tenant isolation + multi-pod production constraint, active-passive DR, TLS 1.3 baseline, tenant status values, and product naming. |
