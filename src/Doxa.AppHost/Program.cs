@@ -33,6 +33,9 @@ var cache = builder.AddRedis("cache")
 var keycloak = builder.AddKeycloak("keycloak", adminUsername: keycloakAdmin, adminPassword: keycloakPassword)
     .WithDataVolume()
     .WithRealmImport("../realms")
+    // The realm import references ${DOXA_WEB_CLIENT_SECRET}; supply it from the
+    // same parameter the web frontend uses so both ends of the OIDC client match.
+    .WithEnvironment("DOXA_WEB_CLIENT_SECRET", oidcClientSecret)
     .WithLifetime(ContainerLifetime.Persistent);
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -42,6 +45,11 @@ var apiService = builder.AddProject<Projects.Doxa_ApiService>("apiservice")
     .WithReference(doxaDb)
     .WithReference(cache)
     .WithReference(keycloak)
+    // Aspire launches projects directly (no launchSettings) so they default to
+    // Production. Forward the AppHost's environment so IsDevelopment()-gated
+    // logic (e.g. RequireHttpsMetadata) behaves correctly against the
+    // http-only Aspire Keycloak authority in local dev.
+    .WithEnvironment("ASPNETCORE_ENVIRONMENT", builder.Environment.EnvironmentName)
     .WaitFor(doxaDb)
     .WaitFor(cache)
     .WaitFor(keycloak)
@@ -56,6 +64,7 @@ builder.AddProject<Projects.Doxa_Web>("webfrontend")
     .WithReference(keycloak)
     .WithReference(apiService)
     .WithEnvironment("Oidc__ClientSecret", oidcClientSecret)   // secret injected as env var
+    .WithEnvironment("ASPNETCORE_ENVIRONMENT", builder.Environment.EnvironmentName) // forward Dev env (see apiservice)
     .WaitFor(cache)
     .WaitFor(keycloak)
     .WaitFor(apiService)

@@ -38,6 +38,10 @@ builder.Services.AddAuthentication(options =>
             options.ResponseType = OpenIdConnectResponseType.Code;             // auth-code + PKCE
             options.UsePkce = true;
 
+            // The Aspire Keycloak resource exposes an http authority in local dev,
+            // so don't require https metadata there — matches Doxa.ApiService.
+            options.RequireHttpsMetadata = !builder.Environment.IsDevelopment();
+
             options.Scope.Clear();
             options.Scope.Add("openid");
             options.Scope.Add("profile");
